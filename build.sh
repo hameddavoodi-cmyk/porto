@@ -17,13 +17,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleExecutable</key><string>${APP_NAME}</string>
-    <key>CFBundleIdentifier</key><string>local.porto.app</string>
+    <key>CFBundleIdentifier</key><string>com.hameddavodi.porto</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>${APP_NAME}</string>
     <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>1.0.0</string>
+    <key>CFBundleVersion</key><string>2</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>LSUIElement</key><true/>

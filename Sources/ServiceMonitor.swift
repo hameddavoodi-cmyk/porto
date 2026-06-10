@@ -16,8 +16,16 @@ final class ServiceMonitor: ObservableObject {
     // completion block may never run — isRefreshing would stay true forever
     // and every subsequent tick would bail out, leaving the menu empty.
     private let refreshStaleAfter: TimeInterval = 15.0
+    private var activity: NSObjectProtocol?
 
     init() {
+        // Keep App Nap from suspending the timer — the app has no windows,
+        // so macOS otherwise throttles it within minutes of going background.
+        activity = ProcessInfo.processInfo.beginActivity(
+            options: .background,
+            reason: "Continuous port monitoring"
+        )
+
         refresh()
         startTimer()
         let nc = NSWorkspace.shared.notificationCenter
@@ -35,9 +43,14 @@ final class ServiceMonitor: ObservableObject {
 
     private func startTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
+        // .common mode: keep firing while the menu is open (event tracking)
+        // and while NSAlert runs modal — .default mode stalls in both.
+        let t = Timer(timeInterval: refreshInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
+        t.tolerance = 0.5
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
     @objc private func handleWake() {
@@ -93,8 +106,10 @@ final class ServiceMonitor: ObservableObject {
                 guard let pid = svc.pid else { return }
                 _ = runShell("/bin/kill", args: ["-TERM", "\(pid)"])
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
-                _ = runShell("/bin/kill", args: ["-KILL", "\(pid)"])
-                try? await Task.sleep(nanoseconds: 300_000_000)
+                if runShellEx("/bin/kill", args: ["-0", "\(pid)"]).exitCode == 0 {
+                    _ = runShell("/bin/kill", args: ["-KILL", "\(pid)"])
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                }
 
                 let aliveCheck = runShellEx("/bin/kill", args: ["-0", "\(pid)"])
                 if aliveCheck.exitCode == 0 {

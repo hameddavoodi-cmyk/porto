@@ -1,8 +1,10 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 struct MenuView: View {
     @ObservedObject var monitor: ServiceMonitor
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,6 +15,29 @@ struct MenuView: View {
             footer
         }
         .frame(width: 340)
+        .onAppear {
+            // Fresh data the instant the menu opens, not up to 3 s later.
+            monitor.refresh()
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
+    }
+
+    private func setLaunchAtLogin(_ enable: Bool) {
+        do {
+            if enable {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            let a = NSAlert()
+            a.messageText = enable ? "Couldn't enable Launch at Login" : "Couldn't disable Launch at Login"
+            a.informativeText = error.localizedDescription
+            a.alertStyle = .warning
+            NSApp.activate(ignoringOtherApps: true)
+            a.runModal()
+        }
+        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
     private func requestKill(_ svc: Service) {
@@ -91,7 +116,21 @@ struct MenuView: View {
     }
 
     private var footer: some View {
-        HStack {
+        HStack(spacing: 8) {
+            Menu {
+                Toggle("Launch at Login", isOn: Binding(
+                    get: { launchAtLogin },
+                    set: { setLaunchAtLogin($0) }
+                ))
+            } label: {
+                Image(systemName: "gearshape")
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Settings")
+
             if let date = monitor.lastRefresh {
                 Text("Updated \(date.formatted(date: .omitted, time: .standard))")
                     .font(.caption2)
@@ -172,6 +211,13 @@ struct ServiceRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            if service.address == "0.0.0.0" {
+                Image(systemName: "globe")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .help("Listening on all interfaces — reachable from the network")
+            }
+
             Button(action: onKill) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(hover ? Color.red : Color.red.opacity(0.55))
@@ -185,15 +231,32 @@ struct ServiceRow: View {
         .contentShape(Rectangle())
         .background(hover ? Color.primary.opacity(0.06) : Color.clear)
         .onHover { hover = $0 }
-        .onTapGesture {
-            guard service.port > 0 else { return }
-            let url = "http://localhost:\(service.port)"
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(url, forType: .string)
-            if let u = URL(string: url) {
-                NSWorkspace.shared.open(u)
+        .onTapGesture { openInBrowser() }
+        .contextMenu {
+            if service.port > 0 {
+                Button("Open in Browser") { openInBrowser() }
+                Button("Copy URL") { copy("http://localhost:\(service.port)") }
+                Button("Copy Port") { copy(String(service.port)) }
             }
+            if let pid = service.pid {
+                Button("Copy PID") { copy(String(pid)) }
+            }
+            if let id = service.containerId {
+                Button("Copy Container ID") { copy(id) }
+            }
+            Divider()
+            Button(service.kind == .docker ? "Stop Container" : "Kill Process", action: onKill)
         }
+    }
+
+    private func openInBrowser() {
+        guard service.port > 0, let u = URL(string: "http://localhost:\(service.port)") else { return }
+        NSWorkspace.shared.open(u)
+    }
+
+    private func copy(_ s: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
     }
 
     private var idText: String {
